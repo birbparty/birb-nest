@@ -1,25 +1,95 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
 # Binaries for programs and plugins
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+bin/
+dist/
 
 # Test binary, built with `go test -c`
 *.test
 
-# Output of the go coverage tool, specifically when used with LiteIDE
+# Output of the go coverage tool
 *.out
+coverage.html
+coverage.xml
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# Dependency directories
+vendor/
 
 # Go workspace file
 go.work
-go.work.sum
 
-# env file
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
 .env
+.env.local
+.env.*.local
+
+# Docker volumes
+postgres_data/
+redis_data/
+nats_data/
+prometheus_data/
+grafana_data/
+
+# Temporary files
+*.tmp
+*.log
+tmp/
+temp/
+
+# Build artifacts
+build/
+releases/
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# Air live reload
+.air.toml
+.air.toml.tmp
+
+# Delve debugger
+__debug_bin*
+
+# Local development
+.local/
+scratch/
+
+# Performance test results
+benchmarks/
+profiles/
+*.pprof
+
+# Documentation build
+docs/_build/
+docs/.doctrees/
+
+# SDK build artifacts
+sdk/examples/basic/basic
+sdk/examples/wasm/*.wasm
+sdk/**/*.test
+
+# Compiled binaries
+worker
+api
+
+# Task/planning documentation
+*-tasks.yaml
+*TASK*.md
+*PHASE*.md
+*SUMMARY*.md
+BIRB-*.md
+ZOT-*.md
+CONTAINER_*.md
+NEXT_TASK_*.md

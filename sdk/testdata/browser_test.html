@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Birb Nest SDK WASM Browser Tests</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .test-status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        .test-status.loading { background: #e3f2fd; color: #1976d2; }
+        .test-status.success { background: #e8f5e9; color: #388e3c; }
+        .test-status.error { background: #ffebee; color: #d32f2f; }
+        .test-results {
+            margin-top: 20px;
+        }
+        .test-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .test-item:last-child { border-bottom: none; }
+        .test-name { flex: 1; }
+        .test-time { color: #666; margin-left: 10px; }
+        .test-pass { color: #4caf50; }
+        .test-fail { color: #f44336; }
+        .test-error {
+            background: #ffebee;
+            color: #d32f2f;
+            padding: 10px;
+            margin-top: 5px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .summary {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        button {
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover { background: #1976d2; }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #serverUrl {
+            padding: 8px;
+            margin-left: 10px;
+            width: 300px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .log {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Birb Nest SDK WASM Browser Tests</h1>
+        
+        <div class="controls">
+            <label>
+                Server URL: 
+                <input type="text" id="serverUrl" value="http://localhost:8080" />
+            </label>
+            <button id="runTests" onclick="runAllTests()">Run Tests</button>
+        </div>
+        
+        <div id="status" class="test-status loading">Loading WASM module...</div>
+        
+        <div class="test-results" id="results"></div>
+        
+        <div class="summary" id="summary" style="display: none;"></div>
+        
+        <div class="log" id="log" style="display: none;"></div>
+    </div>
+
+    <script src="../examples/wasm/wasm_exec.js"></script>
+    <script>
+        let sdk = null;
+        let testResults = [];
+        
+        // Logging
+        function log(message) {
+            const logEl = document.getElementById('log');
+            logEl.style.display = 'block';
+            logEl.innerHTML += message + '<br>';
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(message);
+        }
+        
+        // Test utilities
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message || 'Assertion failed');
+            }
+        }
+        
+        function assertEqual(actual, expected, message) {
+            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+                throw new Error(
+                    message || `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+                );
+            }
+        }
+        
+        // Load WASM
+        async function loadWasm() {
+            const go = new Go();
+            const response = await fetch('../examples/wasm/birb-nest-sdk.wasm');
+            const buffer = await response.arrayBuffer();
+            const { instance } = await WebAssembly.instantiate(buffer, go.importObject);
+            
+            go.run(instance);
+            
+            // Wait for SDK to be available
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            if (!window.birbNestSDK) {
+                throw new Error('birbNestSDK not found on window object');
+            }
+            
+            return window.birbNestSDK;
+        }
+        
+        // Test runner
+        async function runTest(name, fn) {
+            const start = performance.now();
+            try {
+                await fn();
+                const duration = performance.now() - start;
+                return {
+                    name,
+                    passed: true,
+                    duration,
+                    error: null
+                };
+            } catch (error) {
+                const duration = performance.now() - start;
+                return {
+                    name,
+                    passed: false,
+                    duration,
+                    error: error.message
+                };
+            }
+        }
+        
+        // Display results
+        function displayResults() {
+            const resultsEl = document.getElementById('results');
+            resultsEl.innerHTML = '<h2>Test Results</h2>';
+            
+            testResults.forEach(result => {
+                const testEl = document.createElement('div');
+                testEl.className = 'test-item';
+                
+                const statusIcon = result.passed ? '✓' : '✗';
+                const statusClass = result.passed ? 'test-pass' : 'test-fail';
+                
+                testEl.innerHTML = `
+                    <span class="test-name">
+                        <span class="${statusClass}">${statusIcon}</span> ${result.name}
+                    </span>
+                    <span class="test-time">${result.duration.toFixed(2)}ms</span>
+                `;
+                
+                if (result.error) {
+                    const errorEl = document.createElement('div');
+                    errorEl.className = 'test-error';
+                    errorEl.textContent = result.error;
+                    testEl.appendChild(errorEl);
+                }
+                
+                resultsEl.appendChild(testEl);
+            });
+            
+            // Summary
+            const passed = testResults.filter(r => r.passed).length;
+            const failed = testResults.filter(r => !r.passed).length;
+            const total = testResults.length;
+            const totalTime = testResults.reduce((sum, r) => sum + r.duration, 0);
+            
+            const summaryEl = document.getElementById('summary');
+            summaryEl.style.display = 'block';
+            summaryEl.innerHTML = `
+                <strong>Summary:</strong> 
+                ${passed} passed, ${failed} failed, ${total} total
+                <br>
+                <strong>Total time:</strong> ${totalTime.toFixed(2)}ms
+            `;
+        }
+        
+        // Mock server simulation (for offline testing)
+        class MockFetch {
+            constructor() {
+                this.responses = new Map();
+                this.enabled = false;
+            }
+            
+            setResponse(method, path, response) {
+                this.responses.set(`${method}:${path}`, response);
+            }
+            
+            async fetch(url, options = {}) {
+                if (!this.enabled) {
+                    return window.originalFetch(url, options);
+                }
+                
+                const urlObj = new URL(url);
+                const path = urlObj.pathname;
+                const method = options.method || 'GET';
+                const key = `${method}:${path}`;
+                
+                const response = this.responses.get(key);
+                if (!response) {
+                    return new Response(JSON.stringify({ error: 'Not found' }), {
+                        status: 404,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
+                
+                return new Response(JSON.stringify(response.body || {}), {
+                    status: response.status || 200,
+                    headers: { 'Content-Type': 'application/json', ...response.headers }
+                });
+            }
+        }
+        
+        const mockFetch = new MockFetch();
+        window.originalFetch = window.fetch;
+        window.fetch = (url, options) => mockFetch.fetch(url, options);
+        
+        // All tests
+        async function runAllTests() {
+            const statusEl = document.getElementById('status');
+            const runButton = document.getElementById('runTests');
+            runButton.disabled = true;
+            
+            testResults = [];
+            log('Starting browser tests...');
+            
+            try {
+                const serverUrl = document.getElementById('serverUrl').value;
+                const client = sdk.newClient({ baseURL: serverUrl });
+                
+                // Test 1: Basic connectivity
+                const test1 = await runTest('should ping server', async () => {
+                    // Use mock for this test
+                    mockFetch.enabled = true;
+                    mockFetch.setResponse('GET', '/health', {
+                        status: 200,
+                        body: { status: 'healthy' }
+                    });
+                    
+                    await client.ping();
+                    
+                    mockFetch.enabled = false;
+                });
+                testResults.push(test1);
+                
+                // Test 2: String storage
+                const test2 = await runTest('should store and retrieve strings', async () => {
+                    mockFetch.enabled = true;
+                    const key = 'browser-test-string';
+                    const value = 'Hello from browser! 🌐';
+                    
+                    mockFetch.setResponse('POST', `/v1/cache/${key}`, {
+                        status: 200,
+                        body: { key, value }
+                    });
+                    
+                    mockFetch.setResponse('GET', `/v1/cache/${key}`, {
+                        status: 200,
+                        body: { key, value }
+                    });
+                    
+                    await client.set(key, value);
+                    const retrieved = await client.get(key);
+                    
+                    assertEqual(retrieved, value);
+                    mockFetch.enabled = false;
+                });
+                testResults.push(test2);
+                
+                // Test 3: Complex objects
+                const test3 = await runTest('should handle complex objects', async () => {
+                    mockFetch.enabled = true;
+                    const key = 'browser-test-object';
+                    const value = {
+                        user: 'browser-user',
+                        timestamp: new Date().toISOString(),
+                        browser: {
+                            userAgent: navigator.userAgent,
+                            language: navigator.language,
+                            platform: navigator.platform
+                        },
+                        features: ['localStorage', 'fetch', 'WebAssembly']
+                    };
+                    
+                    mockFetch.setResponse('POST', `/v1/cache/${key}`, {
+                        status: 200,
+                        body: { key, value }
+                    });
+                    
+                    mockFetch.setResponse('GET', `/v1/cache/${key}`, {
+                        status: 200,
+                        body: { key, value }
+                    });
+                    
+                    await client.set(key, value);
+                    const retrieved = await client.get(key);
+                    
+                    assertEqual(retrieved.user, value.user);
+                    assertEqual(retrieved.features.length, value.features.length);
+                    mockFetch.enabled = false;
+                });
+                testResults.push(test3);
+                
+                // Test 4: Error handling
+                const test4 = await runTest('should handle 404 errors', async () => {
+                    mockFetch.enabled = true;
+                    mockFetch.setResponse('GET', '/v1/cache/nonexistent', {
+                        status: 404,
+                        body: { error: 'Key not found' }
+                    });
+                    
+                    try {
+                        await client.get('nonexistent');
+                        throw new Error('Should have thrown an error');
+                    } catch (error) {
+                        assert(error.message.includes('not found') || error.message.includes('404'));
+                    }
+                    mockFetch.enabled = false;
+                });
+                testResults.push(test4);
+                
+                // Test 5: Concurrent operations
+                const test5 = await runTest('should handle concurrent operations', async () => {
+                    mockFetch.enabled = true;
+                    const promises = [];
+                    
+                    for (let i = 0; i < 5; i++) {
+                        const key = `concurrent-${i}`;
+                        mockFetch.setResponse('POST', `/v1/cache/${key}`, {
+                            status: 200,
+                            body: { key, value: i }
+                        });
+                        promises.push(client.set(key, i));
+                    }
+                    
+                    await Promise.all(promises);
+                    mockFetch.enabled = false;
+                });
+                testResults.push(test5);
+                
+                // Test 6: Large payload
+                const test6 = await runTest('should handle large payloads', async () => {
+                    mockFetch.enabled = true;
+                    const key = 'large-payload';
+                    const largeArray = Array(100).fill(null).map((_, i) => ({
+                        id: i,
+                        data: 'x'.repeat(100)
+                    }));
+                    
+                    mockFetch.setResponse('POST', `/v1/cache/${key}`, {
+                        status: 200,
+                        body: { key, value: largeArray }
+                    });
+                    
+                    mockFetch.setResponse('GET', `/v1/cache/${key}`, {
+                        status: 200,
+                        body: { key, value: largeArray }
+                    });
+                    
+                    await client.set(key, largeArray);
+                    const retrieved = await client.get(key);
+                    
+                    assertEqual(retrieved.length, largeArray.length);
+                    mockFetch.enabled = false;
+                });
+                testResults.push(test6);
+                
+                // Test 7: Browser-specific features
+                const test7 = await runTest('should work with browser APIs', async () => {
+                    // Test that we can store browser-specific data
+                    const browserData = {
+                        localStorage: typeof localStorage !== 'undefined',
+                        indexedDB: typeof indexedDB !== 'undefined',
+                        serviceWorker: 'serviceWorker' in navigator,
+                        webgl: (() => {
+                            try {
+                                const canvas = document.createElement('canvas');
+                                return !!(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+                            } catch (e) {
+                                return false;
+                            }
+                        })()
+                    };
+                    
+                    mockFetch.enabled = true;
+                    const key = 'browser-features';
+                    
+                    mockFetch.setResponse('POST', `/v1/cache/${key}`, {
+                        status: 200,
+                        body: { key, value: browserData }
+                    });
+                    
+                    await client.set(key, browserData);
+                    assert(true, 'Browser-specific data stored successfully');
+                    mockFetch.enabled = false;
+                });
+                testResults.push(test7);
+                
+                statusEl.className = 'test-status success';
+                statusEl.textContent = 'All tests completed!';
+                
+            } catch (error) {
+                statusEl.className = 'test-status error';
+                statusEl.textContent = 'Test execution failed: ' + error.message;
+                log('Fatal error: ' + error.message);
+            } finally {
+                runButton.disabled = false;
+                displayResults();
+            }
+        }
+        
+        // Initialize
+        window.addEventListener('load', async () => {
+            const statusEl = document.getElementById('status');
+            
+            try {
+                sdk = await loadWasm();
+                statusEl.className = 'test-status success';
+                statusEl.textContent = 'WASM module loaded successfully. Ready to run tests.';
+                log('WASM module loaded');
+                
+                // Run tests automatically in development
+                if (window.location.hostname === 'localhost') {
+                    setTimeout(() => runAllTests(), 500);
+                }
+            } catch (error) {
+                statusEl.className = 'test-status error';
+                statusEl.textContent = 'Failed to load WASM module: ' + error.message;
+                log('Error loading WASM: ' + error.message);
+                document.getElementById('runTests').disabled = true;
+            }
+        });
+    </script>
+</body>
+</html>

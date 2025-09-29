@@ -1,0 +1,138 @@
+# Default values for birb-nest (primary mode)
+mode: primary
+instanceId: ""
+
+replicaCount: 1
+
+image:
+  repository: birbparty/birb-nest
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+# Service configuration - internal only
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# API container configuration
+api:
+  port: 8080
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Environment variables
+  env:
+    - name: LOG_LEVEL
+      value: "info"
+    - name: LOG_FORMAT
+      value: "json"
+
+# Primary mode specific settings
+primary:
+  writeQueueSize: 10000
+  writeWorkers: 5
+  
+# Replica mode specific settings
+replica:
+  primaryUrl: "http://birb-nest-primary:8080"
+
+# Redis subchart configuration
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+# PostgreSQL subchart configuration (primary only)
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "changeme"
+    database: "birbnest"
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+  backup:
+    enabled: false
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    retention: 7           # Keep 7 days of backups
+    storageClass: "fast-ssd"
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+
+# Network policies for security
+networkPolicy:
+  enabled: true
+  # Labels that client pods must have to access this service
+  clientLabels:
+    birb-nest-client: "true"
+  # Namespaces allowed to access this service
+  allowedNamespaces:
+    - default
+    - production
+
+# Monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: api
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: api
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,111 @@
+# OpenTelemetry Collector configuration for Birb Nest - Local OTEL mode
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'otel-collector'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['0.0.0.0:8888']
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+  
+  memory_limiter:
+    limit_mib: 512
+    spike_limit_mib: 128
+    check_interval: 5s
+  
+  resource:
+    attributes:
+      - key: service.namespace
+        value: birb-nest
+        action: insert
+      - key: deployment.environment
+        from_attribute: env
+        action: insert
+
+exporters:
+  # Traces
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+  
+  # File exporter for traces (local-otel)
+  file/traces:
+    path: /tmp/otel/traces.json
+    rotation:
+      max_megabytes: 10
+      max_days: 1
+      max_backups: 3
+  
+  # Metrics
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: birb_nest
+    const_labels:
+      environment: development
+  
+  # File exporter for metrics (local-otel)
+  file/metrics:
+    path: /tmp/otel/metrics.json
+    rotation:
+      max_megabytes: 10
+      max_days: 1
+      max_backups: 3
+  
+  # Logs
+  logging:
+    loglevel: info
+  
+  # File exporter for logs (local-otel)
+  file/logs:
+    path: /tmp/otel/logs.json
+    rotation:
+      max_megabytes: 10
+      max_days: 1
+      max_backups: 3
+  
+  # Debug exporter
+  debug:
+    verbosity: detailed
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  
+  zpages:
+    endpoint: 0.0.0.0:55679
+  
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+service:
+  extensions: [health_check, zpages, pprof]
+  
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [jaeger, file/traces, debug]
+    
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [memory_limiter, batch, resource]
+      exporters: [prometheus, file/metrics, debug]
+    
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [logging, file/logs]

@@ -1,0 +1,24 @@
+# Vegeta targets file for Birb Nest cache service
+# Format: METHOD URL [HEADERS]
+
+# Read operations (70%)
+GET http://localhost:8080/v1/cache/test-key-1
+GET http://localhost:8080/v1/cache/test-key-2
+GET http://localhost:8080/v1/cache/test-key-3
+GET http://localhost:8080/v1/cache/test-key-4
+GET http://localhost:8080/v1/cache/test-key-5
+GET http://localhost:8080/v1/cache/test-key-6
+GET http://localhost:8080/v1/cache/test-key-7
+
+# Write operations (30%)
+POST http://localhost:8080/v1/cache/test-key-8
+Content-Type: application/json
+@tests/load/vegeta/payloads/small.json
+
+POST http://localhost:8080/v1/cache/test-key-9
+Content-Type: application/json
+@tests/load/vegeta/payloads/medium.json
+
+POST http://localhost:8080/v1/cache/test-key-10
+Content-Type: application/json
+@tests/load/vegeta/payloads/large.json

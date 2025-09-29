@@ -1,0 +1,148 @@
+# Custom values for birb-nest deployment in v6r-io-api namespace
+# This configuration integrates with existing infrastructure
+
+# Service naming for v6r-api integration
+nameOverride: "birb-nest"
+fullnameOverride: "birb-nest"
+
+# Single replica for initial deployment
+replicaCount: 1
+
+# Use Zot registry image with v6r-io path
+image:
+  repository: images.birb.homes/v6r-io/birb-nest-api
+  pullPolicy: Always
+  tag: "v1.0.0"
+
+# Image pull secrets for Zot registry authentication
+imagePullSecrets:
+  - name: images-birb-homes-pull-secret
+
+# Service configuration - must be accessible at http://birb-nest:8080
+service:
+  type: ClusterIP
+  port: 8080
+  annotations:
+    # Explicitly disable load balancer for DigitalOcean
+    service.beta.kubernetes.io/do-loadbalancer-enabled: "false"
+
+# API container configuration
+api:
+  port: 8080
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Environment variables for v6r integration
+  env:
+    - name: LOG_LEVEL
+      value: "info"
+    - name: LOG_FORMAT
+      value: "json"
+    - name: API_PORT
+      value: "8080"
+    # External Redis configuration
+    - name: REDIS_HOST
+      value: "redis-master"
+    - name: REDIS_PORT
+      value: "6379"
+    # External PostgreSQL configuration
+    - name: POSTGRES_HOST
+      value: "postgres-postgresql"
+    - name: POSTGRES_PORT
+      value: "5432"
+    - name: POSTGRES_DB
+      value: "birbnest"
+    - name: POSTGRES_USER
+      value: "postgres"
+    # Use existing secrets for passwords
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: postgres-postgresql
+          key: postgres-password
+          optional: true
+
+# Disable subcharts - use existing infrastructure in v6r-io-api namespace
+redis:
+  enabled: false
+
+postgresql:
+  enabled: false
+
+# Network policy for v6r-api access
+networkPolicy:
+  enabled: true
+  # Allow access from v6r-api pods
+  clientLabels:
+    app.kubernetes.io/name: "v6r-api"
+  # Allow access within the v6r-io-api namespace
+  allowedNamespaces:
+    - v6r-io-api
+
+# Health checks - critical for Kubernetes integration
+livenessProbe:
+  httpGet:
+    path: /health
+    port: api
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: api
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Enable metrics for monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false  # Can be enabled later if Prometheus operator is available
+
+# Security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod annotations for better integration
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+
+# Node selection and tolerations (can be customized for DOKS)
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Primary mode configuration
+mode: primary
+primary:
+  writeQueueSize: 10000
+  writeWorkers: 5

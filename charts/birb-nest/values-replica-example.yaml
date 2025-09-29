@@ -1,0 +1,33 @@
+# Example values for replica deployment
+mode: replica
+instanceId: "game123"
+
+# Disable PostgreSQL for replicas
+postgresql:
+  enabled: false
+
+# Configure primary URL
+replica:
+  primaryUrl: "http://birb-nest-primary:8080"
+
+# Optionally reduce resources for replicas
+api:
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+redis:
+  master:
+    persistence:
+      size: 4Gi
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 25m
+        memory: 32Mi

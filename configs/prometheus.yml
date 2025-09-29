@@ -1,0 +1,62 @@
+# Prometheus configuration for Birb Nest
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'birb-nest-local'
+    environment: 'development'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API Service metrics
+  - job_name: 'birb-nest-api'
+    static_configs:
+      - targets: ['api:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Worker Service metrics (if exposed)
+  - job_name: 'birb-nest-worker'
+    static_configs:
+      - targets: ['worker:9091']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # PostgreSQL exporter (optional)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # Redis exporter (optional)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # NATS exporter
+  - job_name: 'nats'
+    static_configs:
+      - targets: ['nats:8222']
+    metrics_path: '/metrics'
+
+  # OpenTelemetry Collector metrics
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector:8888']
+    scrape_interval: 10s

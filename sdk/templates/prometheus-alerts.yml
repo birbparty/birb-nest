@@ -1,0 +1,253 @@
+# Prometheus Alert Rules for Birb-Nest SDK Applications
+# These alerts are designed to catch common operational issues
+# before they become critical problems
+
+groups:
+  - name: birb_nest_application
+    interval: 30s
+    rules:
+      # Application Health Alerts
+      - alert: ApplicationDown
+        expr: up{job="birb-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: oncall
+          service: birb-app
+        annotations:
+          summary: "Application {{ $labels.instance }} is down"
+          description: "The application has been unreachable for more than 2 minutes. This requires immediate attention."
+          runbook_url: "https://wiki.example.com/runbooks/app-down"
+          dashboard_url: "http://grafana.example.com/d/birb-nest-sdk"
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(birb_nest_errors_total[5m])) 
+            / 
+            sum(rate(birb_nest_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: dev
+          service: birb-app
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes. Normal is < 1%."
+          runbook_url: "https://wiki.example.com/runbooks/high-error-rate"
+
+      - alert: VeryHighErrorRate
+        expr: |
+          (
+            sum(rate(birb_nest_errors_total[5m])) 
+            / 
+            sum(rate(birb_nest_requests_total[5m]))
+          ) > 0.10
+        for: 2m
+        labels:
+          severity: critical
+          team: oncall
+          service: birb-app
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} - this indicates a serious problem!"
+          runbook_url: "https://wiki.example.com/runbooks/critical-errors"
+
+  - name: birb_nest_performance
+    interval: 30s
+    rules:
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(birb_nest_latency_milliseconds_bucket[5m])) by (le)
+          ) > 500
+        for: 5m
+        labels:
+          severity: warning
+          team: dev
+          service: birb-app
+        annotations:
+          summary: "Response times are degraded"
+          description: "95th percentile latency is {{ $value }}ms (threshold: 500ms). Users may be experiencing slowness."
+          runbook_url: "https://wiki.example.com/runbooks/slow-response"
+
+      - alert: VerySlowResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(birb_nest_latency_milliseconds_bucket[5m])) by (le)
+          ) > 1000
+        for: 2m
+        labels:
+          severity: critical
+          team: oncall
+          service: birb-app
+        annotations:
+          summary: "Response times are critically slow"
+          description: "95th percentile latency is {{ $value }}ms. Application is severely impacted!"
+          runbook_url: "https://wiki.example.com/runbooks/critical-slowness"
+
+  - name: birb_nest_cache
+    interval: 30s
+    rules:
+      - alert: LowCacheHitRate
+        expr: |
+          (
+            sum(rate(birb_nest_cache_hits_total[10m]))
+            /
+            (sum(rate(birb_nest_cache_hits_total[10m])) + sum(rate(birb_nest_cache_misses_total[10m])))
+          ) < 0.7
+        for: 10m
+        labels:
+          severity: warning
+          team: dev
+          service: birb-cache
+        annotations:
+          summary: "Cache hit rate is below optimal"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (should be > 70%). This may impact performance."
+          runbook_url: "https://wiki.example.com/runbooks/low-cache-hits"
+
+      - alert: CacheMissStorm
+        expr: rate(birb_nest_cache_misses_total[1m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+          team: dev
+          service: birb-cache
+        annotations:
+          summary: "High rate of cache misses"
+          description: "Seeing {{ $value }} cache misses per second. Possible cache invalidation storm."
+          runbook_url: "https://wiki.example.com/runbooks/cache-miss-storm"
+
+  - name: birb_nest_infrastructure
+    interval: 30s
+    rules:
+      - alert: BirbNestAPIDown
+        expr: up{job="birb-nest-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: oncall
+          service: birb-nest-api
+        annotations:
+          summary: "Birb-Nest API is down"
+          description: "Cannot connect to Birb-Nest API. All cache operations will fail!"
+          runbook_url: "https://wiki.example.com/runbooks/birb-nest-down"
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: oncall
+          service: redis
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache backend is unreachable. Cache operations will fail!"
+          runbook_url: "https://wiki.example.com/runbooks/redis-down"
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: oncall
+          service: postgres
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "Database is unreachable. Persistent storage operations will fail!"
+          runbook_url: "https://wiki.example.com/runbooks/postgres-down"
+
+  - name: birb_nest_circuit_breaker
+    interval: 30s
+    rules:
+      - alert: CircuitBreakerOpen
+        expr: birb_nest_circuit_breaker_open == 1
+        for: 2m
+        labels:
+          severity: warning
+          team: oncall
+          service: birb-app
+        annotations:
+          summary: "Circuit breaker is open"
+          description: "Circuit breaker has tripped due to repeated failures. The SDK is in protective mode."
+          runbook_url: "https://wiki.example.com/runbooks/circuit-breaker"
+
+      - alert: CircuitBreakerOpenTooLong
+        expr: birb_nest_circuit_breaker_open == 1
+        for: 10m
+        labels:
+          severity: critical
+          team: oncall
+          service: birb-app
+        annotations:
+          summary: "Circuit breaker stuck open"
+          description: "Circuit breaker has been open for 10 minutes. Manual intervention may be required."
+          runbook_url: "https://wiki.example.com/runbooks/circuit-breaker-stuck"
+
+  - name: birb_nest_resources
+    interval: 30s
+    rules:
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            container_memory_usage_bytes{name="birb-app"}
+            /
+            container_spec_memory_limit_bytes{name="birb-app"}
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: dev
+          service: birb-app
+        annotations:
+          summary: "High memory usage detected"
+          description: "Container is using {{ $value | humanizePercentage }} of memory limit. May need scaling or optimization."
+          runbook_url: "https://wiki.example.com/runbooks/high-memory"
+
+      - alert: HighCPUUsage
+        expr: |
+          rate(container_cpu_usage_seconds_total{name="birb-app"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: dev
+          service: birb-app
+        annotations:
+          summary: "High CPU usage detected"
+          description: "Container is using {{ $value | humanizePercentage }} of CPU. Performance may be impacted."
+          runbook_url: "https://wiki.example.com/runbooks/high-cpu"
+
+  - name: birb_nest_rate_limiting
+    interval: 30s
+    rules:
+      - alert: RateLimitingActive
+        expr: rate(birb_nest_rate_limited_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: dev
+          service: birb-app
+        annotations:
+          summary: "Application is being rate limited"
+          description: "Seeing {{ $value }} rate limited requests per second. May need to adjust limits or reduce request rate."
+          runbook_url: "https://wiki.example.com/runbooks/rate-limiting"
+
+# Alert routing recommendations:
+# - severity: critical → Page on-call immediately
+# - severity: warning → Send to Slack/email
+# - team: oncall → Primary on-call rotation
+# - team: dev → Development team during business hours
+
+# Testing alerts:
+# You can test these alerts by using Prometheus's web UI:
+# 1. Go to http://prometheus:9090/alerts
+# 2. Check which alerts are pending/firing
+# 3. Use the expression browser to test alert queries
+
+# Silencing alerts:
+# During maintenance windows, silence alerts in AlertManager:
+# 1. Go to http://alertmanager:9093
+# 2. Click "New Silence"
+# 3. Match on labels like {service="birb-app"}
+# 4. Set duration for maintenance window

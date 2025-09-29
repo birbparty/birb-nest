@@ -1,0 +1,103 @@
+name: Helm Chart CI
+
+on:
+  push:
+    paths:
+      - 'charts/**'
+      - '.github/workflows/helm-chart-ci.yml'
+  pull_request:
+    paths:
+      - 'charts/**'
+      - '.github/workflows/helm-chart-ci.yml'
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.12.1
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.6.0
+
+      - name: Run chart-testing (list-changed)
+        id: list-changed
+        run: |
+          changed=$(ct list-changed --target-branch ${{ github.event.repository.default_branch }})
+          if [[ -n "$changed" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run chart-testing (lint)
+        run: ct lint --target-branch ${{ github.event.repository.default_branch }} --validate-maintainers=false
+
+      - name: Helm lint
+        run: |
+          helm lint charts/birb-nest
+          helm lint charts/birb-nest -f charts/birb-nest/values-replica-example.yaml
+
+      - name: Template validation - Primary
+        run: |
+          helm template test-primary charts/birb-nest --debug > /tmp/primary.yaml
+          echo "Primary template rendered successfully"
+
+      - name: Template validation - Replica
+        run: |
+          helm template test-replica charts/birb-nest \
+            -f charts/birb-nest/values-replica-example.yaml \
+            --debug > /tmp/replica.yaml
+          echo "Replica template rendered successfully"
+
+      - name: Validate generated YAML
+        run: |
+          # Install kubeval
+          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          sudo cp kubeval /usr/local/bin
+          
+          # Validate generated manifests
+          echo "Validating primary manifests..."
+          kubeval /tmp/primary.yaml --strict --kubernetes-version 1.27.0
+          
+          echo "Validating replica manifests..."
+          kubeval /tmp/replica.yaml --strict --kubernetes-version 1.27.0
+
+      - name: Check for required values
+        run: |
+          # Check that network policy is enabled by default
+          if ! grep -q "enabled: true" charts/birb-nest/values.yaml | grep -B2 networkPolicy; then
+            echo "ERROR: Network policy should be enabled by default"
+            exit 1
+          fi
+          
+          # Check that PostgreSQL is disabled for replicas
+          if ! grep -q "enabled: false" charts/birb-nest/values-replica-example.yaml | grep -B2 postgresql; then
+            echo "ERROR: PostgreSQL should be disabled in replica example"
+            exit 1
+          fi
+
+      - name: Create Kind cluster
+        if: steps.list-changed.outputs.changed == 'true'
+        uses: helm/kind-action@v1.8.0
+
+      - name: Install chart dependencies
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm dependency update charts/birb-nest
+
+      - name: Run chart-testing (install)
+        if: steps.list-changed.outputs.changed == 'true'
+        run: ct install --target-branch ${{ github.event.repository.default_branch }}

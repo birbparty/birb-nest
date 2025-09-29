@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🦜 Birb Nest SDK - Interactive WASM Demo</title>
+    <link rel="stylesheet" href="demo.css">
+</head>
+<body>
+    <div id="particles"></div>
+    
+    <div class="container">
+        <header>
+            <h1>
+                <span class="logo">🦜</span>
+                Birb Nest SDK
+                <span class="subtitle">Interactive WASM Demo</span>
+            </h1>
+            <div class="theme-toggle" title="Toggle theme (T)">
+                <span class="theme-icon">🌙</span>
+            </div>
+        </header>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-label">Status:</span>
+                <span class="status-value" id="connection-status">Initializing...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Operations:</span>
+                <span class="status-value" id="operation-count">0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Score:</span>
+                <span class="status-value" id="score">0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Streak:</span>
+                <span class="status-value" id="streak">0</span>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="control-panel">
+                <h2>🎮 Quick Actions</h2>
+                
+                <div class="quick-actions">
+                    <button class="action-btn" data-action="set" title="Set value (S)">
+                        <span class="btn-icon">💾</span>
+                        <span class="btn-text">Set</span>
+                    </button>
+                    <button class="action-btn" data-action="get" title="Get value (G)">
+                        <span class="btn-icon">📤</span>
+                        <span class="btn-text">Get</span>
+                    </button>
+                    <button class="action-btn" data-action="delete" title="Delete value (D)">
+                        <span class="btn-icon">🗑️</span>
+                        <span class="btn-text">Delete</span>
+                    </button>
+                    <button class="action-btn" data-action="batch" title="Batch operation (B)">
+                        <span class="btn-icon">📦</span>
+                        <span class="btn-text">Batch</span>
+                    </button>
+                </div>
+
+                <div class="input-section">
+                    <h3>📝 Cache Entry</h3>
+                    <div class="input-group">
+                        <label for="key-input">Key:</label>
+                        <input type="text" id="key-input" placeholder="Enter key..." autocomplete="off">
+                        <button class="generate-btn" title="Generate random key">🎲</button>
+                    </div>
+                    <div class="input-group">
+                        <label for="value-input">Value:</label>
+                        <textarea id="value-input" placeholder="Enter value (JSON or plain text)..." rows="3"></textarea>
+                        <button class="generate-btn" title="Generate sample data">🎲</button>
+                    </div>
+                    <div class="input-group">
+                        <label for="ttl-input">TTL (seconds):</label>
+                        <input type="number" id="ttl-input" placeholder="Optional TTL" min="1">
+                    </div>
+                </div>
+
+                <div class="advanced-section">
+                    <h3>⚡ Advanced Options</h3>
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="enable-retries">
+                            Enable Retries
+                        </label>
+                        <label>
+                            <input type="checkbox" id="simulate-errors">
+                            Simulate Errors (30%)
+                        </label>
+                        <label>
+                            <input type="checkbox" id="show-timing">
+                            Show Timing Details
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="visualization-panel">
+                <h2>📊 Live Visualization</h2>
+                
+                <div class="circuit-breaker-viz">
+                    <h3>Circuit Breaker Status</h3>
+                    <div class="circuit-status" id="circuit-status">
+                        <div class="circuit-state closed">
+                            <span class="state-icon">✅</span>
+                            <span class="state-name">Closed</span>
+                        </div>
+                        <div class="circuit-arrow">→</div>
+                        <div class="circuit-state half-open">
+                            <span class="state-icon">⚡</span>
+                            <span class="state-name">Half-Open</span>
+                        </div>
+                        <div class="circuit-arrow">→</div>
+                        <div class="circuit-state open">
+                            <span class="state-icon">🚫</span>
+                            <span class="state-name">Open</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="operation-log">
+                    <h3>Operation Log</h3>
+                    <div class="log-container" id="operation-log">
+                        <div class="log-entry welcome">
+                            <span class="log-time">00:00:00</span>
+                            <span class="log-icon">🦜</span>
+                            <span class="log-message">Welcome to Birb Nest SDK Demo!</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h4>Success Rate</h4>
+                        <div class="metric-value" id="success-rate">100%</div>
+                        <div class="metric-bar">
+                            <div class="metric-fill success" id="success-bar" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Avg Response Time</h4>
+                        <div class="metric-value" id="avg-response">0ms</div>
+                        <div class="metric-bar">
+                            <div class="metric-fill timing" id="timing-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Cache Hit Rate</h4>
+                        <div class="metric-value" id="hit-rate">0%</div>
+                        <div class="metric-bar">
+                            <div class="metric-fill hits" id="hit-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="achievements" id="achievements">
+            <h3>🏆 Achievements</h3>
+            <div class="achievement-list" id="achievement-list">
+                <!-- Achievements will be added dynamically -->
+            </div>
+        </div>
+
+        <div class="keyboard-shortcuts">
+            <h3>⌨️ Keyboard Shortcuts</h3>
+            <div class="shortcuts-grid">
+                <div><kbd>S</kbd> Set Value</div>
+                <div><kbd>G</kbd> Get Value</div>
+                <div><kbd>D</kbd> Delete Value</div>
+                <div><kbd>B</kbd> Batch Operation</div>
+                <div><kbd>C</kbd> Clear Log</div>
+                <div><kbd>T</kbd> Toggle Theme</div>
+                <div><kbd>?</kbd> Show Help</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notifications container -->
+    <div id="toast-container"></div>
+
+    <!-- Help modal -->
+    <div id="help-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>🦜 Birb Nest SDK Demo Help</h2>
+            
+            <h3>Getting Started</h3>
+            <p>This demo showcases the Birb Nest SDK running in WebAssembly. Try different operations and watch the real-time visualizations!</p>
+            
+            <h3>Features</h3>
+            <ul>
+                <li><strong>Live Operations:</strong> Perform Set, Get, Delete, and Batch operations</li>
+                <li><strong>Circuit Breaker:</strong> Watch the circuit breaker respond to failures</li>
+                <li><strong>Metrics:</strong> Real-time success rate, response time, and cache hit tracking</li>
+                <li><strong>Gamification:</strong> Earn points and achievements for successful operations</li>
+                <li><strong>Dark Mode:</strong> Toggle between light and dark themes</li>
+            </ul>
+            
+            <h3>Tips</h3>
+            <ul>
+                <li>Use the 🎲 buttons to generate random test data</li>
+                <li>Enable "Simulate Errors" to see error handling in action</li>
+                <li>Build up a streak of successful operations for bonus points</li>
+                <li>Try batch operations to unlock special achievements</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="wasm_exec.js"></script>
+    <script src="demo.js"></script>
+</body>
+</html>

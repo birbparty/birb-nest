@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Birb Nest SDK - WASM Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            min-height: 100px;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .status {
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .loading {
+            background: #cfe2ff;
+            color: #084298;
+            border: 1px solid #b6d4fe;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐦 Birb Nest WASM SDK Demo</h1>
+        
+        <div id="status" class="status loading">Loading WASM module...</div>
+        
+        <div class="form-group">
+            <label for="apiUrl">API URL:</label>
+            <input type="text" id="apiUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+        </div>
+        
+        <div class="form-group">
+            <label for="key">Cache Key:</label>
+            <input type="text" id="key" placeholder="Enter cache key">
+        </div>
+        
+        <div class="form-group">
+            <label for="value">Cache Value (JSON):</label>
+            <textarea id="value" rows="4" placeholder='{"message": "Hello from WASM!"}'></textarea>
+        </div>
+        
+        <div>
+            <button id="setBtn" disabled>Set Value</button>
+            <button id="getBtn" disabled>Get Value</button>
+            <button id="deleteBtn" disabled>Delete Value</button>
+            <button id="pingBtn" disabled>Ping Server</button>
+        </div>
+        
+        <div id="output" class="output">Output will appear here...</div>
+    </div>
+
+    <script src="wasm_exec.js"></script>
+    <script>
+        let client = null;
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+        
+        function setStatus(message, type = '') {
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+        
+        function logOutput(message, isError = false) {
+            output.textContent = message;
+            output.className = 'output ' + (isError ? 'error' : '');
+        }
+        
+        function enableButtons() {
+            document.getElementById('setBtn').disabled = false;
+            document.getElementById('getBtn').disabled = false;
+            document.getElementById('deleteBtn').disabled = false;
+            document.getElementById('pingBtn').disabled = false;
+        }
+        
+        async function loadWasm() {
+            try {
+                const go = new Go();
+                const result = await WebAssembly.instantiateStreaming(
+                    fetch("birb-nest-sdk.wasm"),
+                    go.importObject
+                );
+                
+                go.run(result.instance);
+                
+                // Wait for the global birbNestSDK to be available
+                setTimeout(() => {
+                    if (window.birbNestSDK) {
+                        setStatus('WASM module loaded successfully!', 'success');
+                        enableButtons();
+                        initializeClient();
+                    } else {
+                        setStatus('Failed to initialize SDK', 'error');
+                    }
+                }, 100);
+                
+            } catch (err) {
+                setStatus('Failed to load WASM: ' + err.message, 'error');
+                console.error(err);
+            }
+        }
+        
+        function initializeClient() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            try {
+                client = window.birbNestSDK.newClient({
+                    baseURL: apiUrl
+                });
+                logOutput('Client initialized with URL: ' + apiUrl);
+            } catch (err) {
+                logOutput('Failed to initialize client: ' + err.message, true);
+            }
+        }
+        
+        document.getElementById('apiUrl').addEventListener('change', initializeClient);
+        
+        document.getElementById('setBtn').addEventListener('click', async () => {
+            const key = document.getElementById('key').value;
+            const value = document.getElementById('value').value;
+            
+            if (!key) {
+                logOutput('Please enter a key', true);
+                return;
+            }
+            
+            try {
+                const parsedValue = value ? JSON.parse(value) : {};
+                await client.set(key, parsedValue);
+                logOutput(`✅ Successfully set key "${key}"`);
+            } catch (err) {
+                logOutput('Failed to set value: ' + err.message, true);
+            }
+        });
+        
+        document.getElementById('getBtn').addEventListener('click', async () => {
+            const key = document.getElementById('key').value;
+            
+            if (!key) {
+                logOutput('Please enter a key', true);
+                return;
+            }
+            
+            try {
+                const value = await client.get(key);
+                logOutput(`✅ Value for key "${key}":\n${JSON.stringify(value, null, 2)}`);
+            } catch (err) {
+                logOutput('Failed to get value: ' + err.message, true);
+            }
+        });
+        
+        document.getElementById('deleteBtn').addEventListener('click', async () => {
+            const key = document.getElementById('key').value;
+            
+            if (!key) {
+                logOutput('Please enter a key', true);
+                return;
+            }
+            
+            try {
+                await client.delete(key);
+                logOutput(`✅ Successfully deleted key "${key}"`);
+            } catch (err) {
+                logOutput('Failed to delete value: ' + err.message, true);
+            }
+        });
+        
+        document.getElementById('pingBtn').addEventListener('click', async () => {
+            try {
+                await client.ping();
+                logOutput('✅ Server is healthy!');
+            } catch (err) {
+                logOutput('Failed to ping server: ' + err.message, true);
+            }
+        });
+        
+        // Load WASM when page loads
+        loadWasm();
+    </script>
+</body>
+</html>

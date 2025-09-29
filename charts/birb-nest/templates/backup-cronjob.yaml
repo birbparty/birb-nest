@@ -1,0 +1,69 @@
+{{- if and (eq .Values.mode "primary") .Values.postgresql.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "birb-nest.fullname" . }}-backup
+  labels:
+    {{- include "birb-nest.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.postgresql.backup.schedule | quote }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: postgres-backup
+            image: postgres:14-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+              BACKUP_FILE="/backup/birbnest_${TIMESTAMP}.sql.gz"
+              
+              echo "Starting backup at $(date)"
+              PGPASSWORD=$POSTGRES_PASSWORD pg_dump \
+                -h {{ include "birb-nest.fullname" . }}-postgresql \
+                -U postgres \
+                -d {{ .Values.postgresql.auth.database }} \
+                | gzip > $BACKUP_FILE
+              
+              echo "Backup completed: $BACKUP_FILE"
+              
+              # Clean old backups
+              find /backup -name "birbnest_*.sql.gz" -mtime +{{ .Values.postgresql.backup.retention }} -delete
+              
+              # Log backup status to stdout for monitoring
+              echo "BACKUP_SUCCESS instance={{ .Values.instanceId }} file=$BACKUP_FILE size=$(du -h $BACKUP_FILE | cut -f1)"
+            env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "birb-nest.fullname" . }}-postgresql
+                  key: postgres-password
+            volumeMounts:
+            - name: backup
+              mountPath: /backup
+            resources:
+              {{- toYaml .Values.postgresql.backup.resources | nindent 14 }}
+          volumes:
+          - name: backup
+            persistentVolumeClaim:
+              claimName: {{ include "birb-nest.fullname" . }}-backup
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "birb-nest.fullname" . }}-backup
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: {{ .Values.postgresql.backup.storageClass }}
+  resources:
+    requests:
+      storage: {{ mul .Values.postgresql.backup.retention 2 }}Gi
+{{- end }}

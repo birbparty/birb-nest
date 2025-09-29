@@ -1,0 +1,15 @@
+{
+  "name": "birb-nest-sdk-wasm-tests",
+  "version": "1.0.0",
+  "description": "Test runner for Birb Nest SDK WebAssembly module",
+  "main": "wasm_runner.js",
+  "scripts": {
+    "test": "node wasm_runner.js"
+  },
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

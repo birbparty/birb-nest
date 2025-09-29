@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  # Override API service for local-otel file export
+  api:
+    environment:
+      # Enable file export mode for telemetry
+      OTEL_EXPORT_TO_FILE: "true"
+      OTEL_METRICS_FILE_PATH: "/app/telemetry/metrics.json"
+      OTEL_TRACES_FILE_PATH: "/app/telemetry/traces.json"
+      OTEL_LOGS_FILE_PATH: "/app/telemetry/logs.json"
+    volumes:
+      - ./telemetry:/app/telemetry
+
+  # Override Worker service for local-otel file export
+  worker:
+    environment:
+      # Enable file export mode for telemetry
+      OTEL_EXPORT_TO_FILE: "true"
+      OTEL_METRICS_FILE_PATH: "/app/telemetry/metrics.json"
+      OTEL_TRACES_FILE_PATH: "/app/telemetry/traces.json"
+      OTEL_LOGS_FILE_PATH: "/app/telemetry/logs.json"
+    volumes:
+      - ./telemetry:/app/telemetry
+
+  # Override OTEL collector to include file exporters
+  otel-collector:
+    volumes:
+      - ./configs/otel-collector-config-local.yaml:/etc/otel-collector-config.yaml:ro
+      - ./telemetry/collector:/tmp/otel:rw

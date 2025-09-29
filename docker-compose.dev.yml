@@ -1,0 +1,151 @@
+version: '3.8'
+
+services:
+  # Override API service for development
+  api:
+    build:
+      target: development
+    volumes:
+      - .:/app
+      - go_modules:/go/pkg/mod
+    environment:
+      # Enable development features
+      GIN_MODE: debug
+      CGO_ENABLED: 0
+      GOOS: linux
+      GOARCH: amd64
+      # Hot reload
+      AIR_ENABLED: true
+      # Observability
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: birb-nest-api
+    ports:
+      - "${API_PORT:-8080}:8080"
+      - "${API_DEBUG_PORT:-2345}:2345"  # Delve debug port
+    command: air -c .air.toml
+
+  # Override Worker service for development
+  worker:
+    build:
+      target: development
+    volumes:
+      - .:/app
+      - go_modules:/go/pkg/mod
+    environment:
+      # Enable development features
+      CGO_ENABLED: 0
+      GOOS: linux
+      GOARCH: amd64
+      # Hot reload
+      AIR_ENABLED: true
+      # Observability
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: birb-nest-worker
+    ports:
+      - "${WORKER_DEBUG_PORT:-2346}:2346"  # Delve debug port
+    command: air -c .air.toml
+    deploy:
+      replicas: 1  # Single worker in dev mode
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.91.0
+    container_name: birb-nest-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./configs/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8888:8888"   # Prometheus metrics exposed by the collector
+      - "8889:8889"   # Prometheus exporter metrics
+      - "13133:13133" # Health check extension
+      - "55679:55679" # ZPages extension
+    networks:
+      - birb-net
+
+  # Jaeger for distributed tracing
+  jaeger:
+    image: jaegertracing/all-in-one:1.52
+    container_name: birb-nest-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
+    ports:
+      - "5775:5775/udp"
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+      - "5778:5778"
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"
+      - "14250:14250"
+    networks:
+      - birb-net
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: birb-nest-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"  # Prometheus UI
+    networks:
+      - birb-net
+
+  # Grafana for dashboards
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: birb-nest-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: false
+    volumes:
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./configs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"  # Grafana UI
+    depends_on:
+      - prometheus
+    networks:
+      - birb-net
+
+  # pgAdmin for PostgreSQL management
+  pgadmin:
+    image: dpage/pgadmin4:8.1
+    container_name: birb-nest-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@birb.party}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"  # pgAdmin UI
+    depends_on:
+      - postgres
+    networks:
+      - birb-net
+
+  # Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: birb-nest-redis-commander
+    environment:
+      REDIS_HOSTS: redis:redis:6379
+    ports:
+      - "8081:8081"  # Redis Commander UI
+    depends_on:
+      - redis
+    networks:
+      - birb-net
+
+volumes:
+  go_modules:
+  prometheus_data:
+  grafana_data:
