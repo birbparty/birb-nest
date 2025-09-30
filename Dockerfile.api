@@ -7,6 +7,9 @@ RUN apk add --no-cache git make
 # Set working directory
 WORKDIR /build
 
+# Download orchestrion
+RUN go install github.com/DataDog/orchestrion@latest
+
 # Copy go mod files
 COPY go.mod go.sum ./
 
@@ -17,7 +20,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 orchestrion go build -ldflags="-w -s" -o api ./cmd/api
 
 # Development stage
 FROM golang:1.23-alpine AS development
