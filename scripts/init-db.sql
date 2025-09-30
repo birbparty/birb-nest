@@ -73,15 +73,16 @@ CREATE INDEX idx_dlq_entries_last_retry_at ON dlq_entries(last_retry_at);
 
 -- Create metrics table for analytics
 CREATE TABLE IF NOT EXISTS cache_metrics (
-    id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    id SERIAL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     operation VARCHAR(50) NOT NULL,
     key VARCHAR(255),
     duration_ms INTEGER,
     success BOOLEAN DEFAULT true,
     error_message TEXT,
-    metadata JSONB DEFAULT '{}'::jsonb
-);
+    metadata JSONB DEFAULT '{}'::jsonb,
+    PRIMARY KEY (id, timestamp)
+) PARTITION BY RANGE (timestamp);
 
 -- Create indexes for metrics
 CREATE INDEX idx_cache_metrics_timestamp ON cache_metrics(timestamp);
