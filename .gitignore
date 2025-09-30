@@ -81,8 +81,8 @@ sdk/examples/wasm/*.wasm
 sdk/**/*.test
 
 # Compiled binaries
-worker
-api
+/worker
+/api
 
 # Task/planning documentation
 *-tasks.yaml
