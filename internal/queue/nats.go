@@ -187,7 +187,6 @@ func (c *Client) PublishRehydration(ctx context.Context, msg *RehydrationMessage
 func (c *Client) CreateConsumer(streamName, consumerName string) (*nats.ConsumerInfo, error) {
 	consumerConfig := &nats.ConsumerConfig{
 		Durable:         consumerName,
-		DeliverSubject:  fmt.Sprintf("deliver.%s", consumerName),
 		AckPolicy:       nats.AckExplicitPolicy,
 		AckWait:         c.config.ConsumerAckWait,
 		MaxDeliver:      c.config.ConsumerMaxDeliver,
