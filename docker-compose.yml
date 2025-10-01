@@ -139,6 +139,7 @@ services:
 
 networks:
   birb-net:
+    name: birb-net
     driver: bridge
 
 volumes:
