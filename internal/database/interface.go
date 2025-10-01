@@ -2,6 +2,9 @@ package database
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"log"
 
 	"github.com/birbparty/birb-nest/internal/instance"
 )
@@ -95,7 +98,25 @@ func (c *PostgreSQLClient) Set(ctx context.Context, key string, value []byte) er
 
 // SetWithInstance stores a value with instance awareness
 func (c *PostgreSQLClient) SetWithInstance(ctx context.Context, key, instanceID string, value []byte) error {
-	return c.repo.SetWithInstance(ctx, key, instanceID, value, nil, nil)
+	// Validate that value is valid JSON before passing to repository
+	// The cache_entries.value column is JSONB and requires valid JSON
+	jsonValue := value
+
+	// Check if the value is already valid JSON
+	if !json.Valid(value) {
+		// Value is not valid JSON, wrap it as a JSON string
+		wrapped, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("failed to encode non-JSON value as JSON: %w", err)
+		}
+		jsonValue = wrapped
+
+		// Log the conversion for debugging
+		log.Printf("Warning: Non-JSON value for key '%s' in instance '%s' was wrapped as JSON. Original length: %d bytes",
+			key, instanceID, len(value))
+	}
+
+	return c.repo.SetWithInstance(ctx, key, instanceID, jsonValue, nil, nil)
 }
 
 // Delete removes a value from the database
