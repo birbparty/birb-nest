@@ -243,7 +243,7 @@ func (h *Handlers) Health(c *fiber.Ctx) error {
 		}
 	} else {
 		// Replica: check primary connectivity
-		ctx, cancel := context.WithTimeout(c.Context(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(c.UserContext(), 2*time.Second)
 		defer cancel()
 
 		req, _ := http.NewRequestWithContext(ctx, "GET", h.primaryURL+"/health", nil)
@@ -348,7 +348,7 @@ func (h *Handlers) forwardDeleteToPrimary(key string, instanceID string) {
 func (h *Handlers) queryPrimary(c *fiber.Ctx, key string, instanceID string) error {
 	url := fmt.Sprintf("%s/v1/cache/%s", h.primaryURL, key)
 
-	req, err := http.NewRequestWithContext(c.Context(), "GET", url, nil)
+	req, err := http.NewRequestWithContext(c.UserContext(), "GET", url, nil)
 	if err != nil {
 		RecordPrimaryQuery(instanceID, "error")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

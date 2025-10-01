@@ -35,7 +35,7 @@ func NewHandler(db *database.DB, cache cache.Cache, queue *queue.Client, metrics
 
 // GetCache handles GET /v1/cache/:key
 func (h *Handler) GetCache(c *fiber.Ctx) error {
-	ctx := c.Context()
+	ctx := c.UserContext()
 	key := c.Params("key")
 
 	if key == "" {
@@ -110,7 +110,7 @@ func (h *Handler) GetCache(c *fiber.Ctx) error {
 
 // SetCache handles POST /v1/cache/:key
 func (h *Handler) SetCache(c *fiber.Ctx) error {
-	ctx := c.Context()
+	ctx := c.UserContext()
 	key := c.Params("key")
 
 	if key == "" {
@@ -196,7 +196,7 @@ func (h *Handler) UpdateCache(c *fiber.Ctx) error {
 
 // DeleteCache handles DELETE /v1/cache/:key
 func (h *Handler) DeleteCache(c *fiber.Ctx) error {
-	ctx := c.Context()
+	ctx := c.UserContext()
 	key := c.Params("key")
 
 	if key == "" {
@@ -222,7 +222,7 @@ func (h *Handler) DeleteCache(c *fiber.Ctx) error {
 
 // BatchGet handles POST /v1/cache/batch/get
 func (h *Handler) BatchGet(c *fiber.Ctx) error {
-	ctx := c.Context()
+	ctx := c.UserContext()
 
 	var req BatchGetRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -316,7 +316,7 @@ func (h *Handler) BatchGet(c *fiber.Ctx) error {
 
 // Health handles GET /health
 func (h *Handler) Health(c *fiber.Ctx) error {
-	ctx := c.Context()
+	ctx := c.UserContext()
 
 	checks := make(map[string]string)
 

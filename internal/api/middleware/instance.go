@@ -51,7 +51,7 @@ func (m *InstanceMiddleware) Handle() fiber.Handler {
 		}
 
 		// Load instance context from registry (creates if doesn't exist)
-		instCtx, err := m.registry.GetOrCreate(c.Context(), instanceID)
+		instCtx, err := m.registry.GetOrCreate(c.UserContext(), instanceID)
 		if err != nil {
 			// Check if it's a not found error
 			if err == instance.ErrInstanceNotFound {
@@ -72,7 +72,7 @@ func (m *InstanceMiddleware) Handle() fiber.Handler {
 			instCtx.IsPermanent = true
 			instCtx.Metadata["type"] = "default"
 			instCtx.Metadata["created_by"] = "system"
-			m.registry.Update(c.Context(), instCtx)
+			m.registry.Update(c.UserContext(), instCtx)
 			// Set flag indicating default instance was created
 			c.Locals("default_instance_created", true)
 		}
@@ -106,7 +106,7 @@ func (m *InstanceMiddleware) Handle() fiber.Handler {
 		}
 
 		// Inject context into request context
-		ctx := instance.InjectContext(c.Context(), instCtx)
+		ctx := instance.InjectContext(c.UserContext(), instCtx)
 		c.SetUserContext(ctx)
 
 		// Store flag for metrics tracking
@@ -115,7 +115,7 @@ func (m *InstanceMiddleware) Handle() fiber.Handler {
 		}
 
 		// Update last active asynchronously
-		go m.registry.UpdateLastActive(c.Context(), instanceID)
+		go m.registry.UpdateLastActive(c.UserContext(), instanceID)
 
 		// Continue to next handler
 		return c.Next()
