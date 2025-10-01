@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	redistrace "github.com/DataDog/dd-trace-go/contrib/redis/go-redis.v9/v2"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -21,7 +22,7 @@ func NewRedisCache(config *Config) (*RedisCache, error) {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
-	// Create Redis client
+	// Create Redis client with tracing
 	client := redis.NewClient(&redis.Options{
 		Addr:            config.Address(),
 		Password:        config.Password,
@@ -36,6 +37,9 @@ func NewRedisCache(config *Config) (*RedisCache, error) {
 		MinIdleConns:    config.MinIdleConns,
 		ConnMaxIdleTime: config.MaxIdleTime,
 	})
+
+	// Wrap client with Datadog tracing
+	redistrace.WrapClient(client, redistrace.WithService("birb-nest-redis"))
 
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

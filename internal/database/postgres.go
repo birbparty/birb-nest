@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	pgxtrace "github.com/DataDog/dd-trace-go/contrib/jackc/pgx.v5/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -32,11 +33,11 @@ func NewDB(cfg *Config) (*DB, error) {
 	// Add health check query
 	poolConfig.HealthCheckPeriod = 30 * time.Second
 
-	// Create connection pool
+	// Create connection pool with Datadog tracing
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	pool, err := pgxtrace.NewPoolWithConfig(ctx, poolConfig, pgxtrace.WithService("birb-nest-postgres"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
