@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/modules/redis"
@@ -16,10 +15,8 @@ import (
 type TestContainers struct {
 	PostgresContainer testcontainers.Container
 	RedisContainer    testcontainers.Container
-	NATSContainer     testcontainers.Container
 	PostgresURL       string
 	RedisURL          string
-	NATSURL           string
 }
 
 // StartContainers starts all required containers for testing
@@ -77,34 +74,6 @@ func StartContainers(ctx context.Context) (*TestContainers, error) {
 
 	tc.RedisURL = fmt.Sprintf("redis://%s:%s", redisHost, redisPort.Port())
 
-	// Start NATS with JetStream
-	natsContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "nats:2.10-alpine",
-			Cmd:          []string{"-js"},
-			ExposedPorts: []string{"4222/tcp", "6222/tcp", "8222/tcp"},
-			WaitingFor: wait.ForLog("Server is ready").
-				WithStartupTimeout(30 * time.Second),
-		},
-		Started: true,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to start nats container: %w", err)
-	}
-	tc.NATSContainer = natsContainer
-
-	natsHost, err := natsContainer.Host(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get nats host: %w", err)
-	}
-
-	natsPort, err := natsContainer.MappedPort(ctx, nat.Port("4222/tcp"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to get nats port: %w", err)
-	}
-
-	tc.NATSURL = fmt.Sprintf("nats://%s:%s", natsHost, natsPort.Port())
-
 	return tc, nil
 }
 
@@ -121,12 +90,6 @@ func (tc *TestContainers) Cleanup(ctx context.Context) error {
 	if tc.RedisContainer != nil {
 		if err := tc.RedisContainer.Terminate(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("failed to terminate redis: %w", err))
-		}
-	}
-
-	if tc.NATSContainer != nil {
-		if err := tc.NATSContainer.Terminate(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("failed to terminate nats: %w", err))
 		}
 	}
 

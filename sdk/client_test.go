@@ -28,7 +28,6 @@ func mockServer() *httptest.Server {
 			Checks: map[string]string{
 				"database": "healthy",
 				"redis":    "healthy",
-				"nats":     "healthy",
 			},
 		}
 		json.NewEncoder(w).Encode(resp)

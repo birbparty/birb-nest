@@ -61,7 +61,6 @@ func (ms *MockServer) setupDefaultHandlers() {
 			"checks": map[string]string{
 				"database": "healthy",
 				"redis":    "healthy",
-				"nats":     "healthy",
 			},
 		}
 	})
