@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
 	"github.com/birbparty/birb-nest/internal/cache"
 	"github.com/birbparty/birb-nest/internal/cleanup"
 	"github.com/birbparty/birb-nest/internal/database"
@@ -18,10 +19,31 @@ import (
 	"github.com/birbparty/birb-nest/internal/queue"
 	"github.com/birbparty/birb-nest/internal/storage"
 	"github.com/birbparty/birb-nest/internal/worker"
+
+	// Datadog contrib packages for auto-instrumentation
+	_ "github.com/DataDog/dd-trace-go/contrib/jackc/pgx.v5/v2"
+	_ "github.com/DataDog/dd-trace-go/contrib/redis/go-redis.v9/v2"
 )
 
 func main() {
 	log.Println("🐦 Birb Nest Worker starting...")
+
+	// Initialize Datadog tracer
+	agentAddr := os.Getenv("DD_AGENT_HOST")
+	if agentAddr == "" {
+		agentAddr = "localhost"
+	}
+	agentAddr = agentAddr + ":8126"
+
+	tracer.Start(
+		tracer.WithEnv(getEnv("DD_ENV", "production")),
+		tracer.WithService(getEnv("DD_SERVICE", "birb-nest-worker")),
+		tracer.WithServiceVersion(getEnv("DD_VERSION", "1.0.0")),
+		tracer.WithAgentAddr(agentAddr),
+	)
+	defer tracer.Stop()
+
+	log.Printf("🔍 Datadog tracer initialized (agent: %s)", agentAddr)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -206,4 +228,11 @@ func startHealthServer(port int, metrics *worker.Metrics) {
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
 		log.Printf("Health server error: %v", err)
 	}
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
