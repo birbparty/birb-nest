@@ -5,11 +5,13 @@ import (
 	"log"
 	"time"
 
+	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
 	"github.com/birbparty/birb-nest/internal/database"
 )
 
 // WriteRequest represents an async write to PostgreSQL
 type WriteRequest struct {
+	Ctx        context.Context // Traced context for span propagation
 	Key        string
 	Value      []byte
 	Timestamp  time.Time // Used for last-write-wins
@@ -49,10 +51,11 @@ func NewAsyncWriter(db database.Interface, queueSize, workers int) *AsyncWriter 
 	return aw
 }
 
-// Write queues a write request
-func (aw *AsyncWriter) Write(key string, value []byte, instanceID string) {
+// Write queues a write request with traced context
+func (aw *AsyncWriter) Write(ctx context.Context, key string, value []byte, instanceID string) {
 	select {
 	case aw.queue <- WriteRequest{
+		Ctx:        ctx,
 		Key:        key,
 		Value:      value,
 		Timestamp:  time.Now(),
@@ -74,9 +77,24 @@ func (aw *AsyncWriter) Write(key string, value []byte, instanceID string) {
 // worker processes write requests from the queue
 func (aw *AsyncWriter) worker(id int) {
 	for req := range aw.queue {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Create a child span for async PostgreSQL write
+		span, ctx := tracer.StartSpanFromContext(req.Ctx, "postgresql.async_write",
+			tracer.ServiceName("birb-nest-async-writer"),
+			tracer.ResourceName("SetWithInstance"),
+			tracer.SpanType("db"),
+			tracer.Tag("db.instance", req.InstanceID),
+			tracer.Tag("db.key", req.Key),
+		)
+
+		// Add timeout but preserve trace context
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		err := aw.db.SetWithInstance(ctx, req.Key, req.InstanceID, req.Value)
 		cancel()
+
+		if err != nil {
+			span.SetTag("error", err)
+		}
+		span.Finish()
 
 		if err != nil {
 			if req.Retries < aw.maxRetry {

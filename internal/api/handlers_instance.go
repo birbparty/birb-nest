@@ -101,7 +101,7 @@ func (h *Handlers) Set(c *fiber.Ctx) error {
 			if instanceHeader := c.Get("X-Instance-ID"); instanceHeader != "" {
 				sourceInstance = instanceHeader
 			}
-			h.asyncWriter.Write(key, value, sourceInstance)
+			h.asyncWriter.Write(ctx, key, value, sourceInstance)
 		}
 	} else {
 		// Replica: forward to primary asynchronously
