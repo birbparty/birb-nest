@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
 	"github.com/nats-io/nats.go"
 )
 
@@ -127,58 +128,104 @@ func (c *Client) initializeStreams() error {
 
 // PublishPersistence publishes a persistence message
 func (c *Client) PublishPersistence(ctx context.Context, msg *PersistenceMessage) error {
+	// Start tracing span for producer
+	span, ctx := tracer.StartSpanFromContext(ctx, "nats.publish",
+		tracer.ServiceName("birb-nest-queue"),
+		tracer.ResourceName("publish "+SubjectPersistence),
+		tracer.SpanType("queue"),
+		tracer.Tag("messaging.system", "nats"),
+		tracer.Tag("messaging.destination", SubjectPersistence),
+		tracer.Tag("messaging.message_id", msg.ID),
+	)
+	defer span.Finish()
+
 	data, err := msg.Marshal()
 	if err != nil {
+		span.SetTag("error", err)
 		return fmt.Errorf("failed to marshal persistence message: %w", err)
 	}
 
-	// Add message ID for deduplication
-	msgOpts := []nats.PubOpt{
-		nats.MsgId(msg.ID),
+	// Create NATS message with headers for trace propagation
+	natsMsg := nats.NewMsg(SubjectPersistence)
+	natsMsg.Data = data
+	natsMsg.Header.Set(nats.MsgIdHdr, msg.ID)
+
+	// Inject trace context into message headers
+	carrier := tracer.HTTPHeadersCarrier(natsMsg.Header)
+	if err := tracer.Inject(span.Context(), carrier); err != nil {
+		// Log but don't fail if injection fails
+		fmt.Printf("Failed to inject trace context: %v\n", err)
 	}
 
 	// Publish with context
-	pubAck, err := c.js.PublishAsync(SubjectPersistence, data, msgOpts...)
+	pubAck, err := c.js.PublishMsgAsync(natsMsg)
 	if err != nil {
+		span.SetTag("error", err)
 		return fmt.Errorf("failed to publish persistence message: %w", err)
 	}
 
 	// Wait for acknowledgment
 	select {
 	case <-pubAck.Ok():
+		span.SetTag("messaging.publish_status", "success")
 		return nil
 	case err := <-pubAck.Err():
+		span.SetTag("error", err)
 		return fmt.Errorf("persistence message publish failed: %w", err)
 	case <-ctx.Done():
+		span.SetTag("error", ctx.Err())
 		return ctx.Err()
 	}
 }
 
 // PublishRehydration publishes a rehydration message
 func (c *Client) PublishRehydration(ctx context.Context, msg *RehydrationMessage) error {
+	// Start tracing span for producer
+	span, ctx := tracer.StartSpanFromContext(ctx, "nats.publish",
+		tracer.ServiceName("birb-nest-queue"),
+		tracer.ResourceName("publish "+SubjectRehydration),
+		tracer.SpanType("queue"),
+		tracer.Tag("messaging.system", "nats"),
+		tracer.Tag("messaging.destination", SubjectRehydration),
+		tracer.Tag("messaging.message_id", msg.ID),
+	)
+	defer span.Finish()
+
 	data, err := msg.Marshal()
 	if err != nil {
+		span.SetTag("error", err)
 		return fmt.Errorf("failed to marshal rehydration message: %w", err)
 	}
 
-	// Add message ID for deduplication
-	msgOpts := []nats.PubOpt{
-		nats.MsgId(msg.ID),
+	// Create NATS message with headers for trace propagation
+	natsMsg := nats.NewMsg(SubjectRehydration)
+	natsMsg.Data = data
+	natsMsg.Header.Set(nats.MsgIdHdr, msg.ID)
+
+	// Inject trace context into message headers
+	carrier := tracer.HTTPHeadersCarrier(natsMsg.Header)
+	if err := tracer.Inject(span.Context(), carrier); err != nil {
+		// Log but don't fail if injection fails
+		fmt.Printf("Failed to inject trace context: %v\n", err)
 	}
 
 	// Publish with context
-	pubAck, err := c.js.PublishAsync(SubjectRehydration, data, msgOpts...)
+	pubAck, err := c.js.PublishMsgAsync(natsMsg)
 	if err != nil {
+		span.SetTag("error", err)
 		return fmt.Errorf("failed to publish rehydration message: %w", err)
 	}
 
 	// Wait for acknowledgment
 	select {
 	case <-pubAck.Ok():
+		span.SetTag("messaging.publish_status", "success")
 		return nil
 	case err := <-pubAck.Err():
+		span.SetTag("error", err)
 		return fmt.Errorf("rehydration message publish failed: %w", err)
 	case <-ctx.Done():
+		span.SetTag("error", ctx.Err())
 		return ctx.Err()
 	}
 }

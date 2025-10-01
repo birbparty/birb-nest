@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
 	"github.com/birbparty/birb-nest/internal/cache"
 	"github.com/birbparty/birb-nest/internal/database"
 	"github.com/birbparty/birb-nest/internal/queue"
@@ -155,6 +156,37 @@ func (p *Processor) subscribeToRehydration() (*nats.Subscription, error) {
 
 // handlePersistenceMessage handles a persistence message
 func (p *Processor) handlePersistenceMessage(msg *nats.Msg) {
+	// Extract trace context from message headers
+	carrier := tracer.HTTPHeadersCarrier(msg.Header)
+	spanCtx, err := tracer.Extract(carrier)
+	if err != nil && err != tracer.ErrSpanContextNotFound {
+		fmt.Printf("Failed to extract trace context: %v\n", err)
+	}
+
+	// Start consumer span
+	var span *tracer.Span
+	if spanCtx == nil {
+		span = tracer.StartSpan("nats.consume",
+			tracer.ServiceName("birb-nest-worker"),
+			tracer.ResourceName("consume "+queue.SubjectPersistence),
+			tracer.SpanType("queue"),
+			tracer.Tag("messaging.system", "nats"),
+			tracer.Tag("messaging.destination", queue.SubjectPersistence),
+			tracer.Tag("messaging.operation", "receive"),
+		)
+	} else {
+		span = tracer.StartSpan("nats.consume",
+			tracer.ChildOf(spanCtx),
+			tracer.ServiceName("birb-nest-worker"),
+			tracer.ResourceName("consume "+queue.SubjectPersistence),
+			tracer.SpanType("queue"),
+			tracer.Tag("messaging.system", "nats"),
+			tracer.Tag("messaging.destination", queue.SubjectPersistence),
+			tracer.Tag("messaging.operation", "receive"),
+		)
+	}
+	defer span.Finish()
+
 	p.batchMu.Lock()
 	defer p.batchMu.Unlock()
 
@@ -176,7 +208,10 @@ func (p *Processor) handlePersistenceMessage(msg *nats.Msg) {
 
 		if err := p.batchProcessor.ProcessPersistenceBatch(ctx, p.persistenceBatch); err != nil {
 			fmt.Printf("Failed to process persistence batch: %v\n", err)
+			span.SetTag("error", err)
 			// Messages will be retried via NATS redelivery
+		} else {
+			span.SetTag("messaging.batch_size", len(p.persistenceBatch.Messages))
 		}
 
 		// Reset batch
@@ -186,6 +221,37 @@ func (p *Processor) handlePersistenceMessage(msg *nats.Msg) {
 
 // handleRehydrationMessage handles a rehydration message
 func (p *Processor) handleRehydrationMessage(msg *nats.Msg) {
+	// Extract trace context from message headers
+	carrier := tracer.HTTPHeadersCarrier(msg.Header)
+	spanCtx, err := tracer.Extract(carrier)
+	if err != nil && err != tracer.ErrSpanContextNotFound {
+		fmt.Printf("Failed to extract trace context: %v\n", err)
+	}
+
+	// Start consumer span
+	var span *tracer.Span
+	if spanCtx == nil {
+		span = tracer.StartSpan("nats.consume",
+			tracer.ServiceName("birb-nest-worker"),
+			tracer.ResourceName("consume "+queue.SubjectRehydration),
+			tracer.SpanType("queue"),
+			tracer.Tag("messaging.system", "nats"),
+			tracer.Tag("messaging.destination", queue.SubjectRehydration),
+			tracer.Tag("messaging.operation", "receive"),
+		)
+	} else {
+		span = tracer.StartSpan("nats.consume",
+			tracer.ChildOf(spanCtx),
+			tracer.ServiceName("birb-nest-worker"),
+			tracer.ResourceName("consume "+queue.SubjectRehydration),
+			tracer.SpanType("queue"),
+			tracer.Tag("messaging.system", "nats"),
+			tracer.Tag("messaging.destination", queue.SubjectRehydration),
+			tracer.Tag("messaging.operation", "receive"),
+		)
+	}
+	defer span.Finish()
+
 	p.batchMu.Lock()
 	defer p.batchMu.Unlock()
 
@@ -207,7 +273,10 @@ func (p *Processor) handleRehydrationMessage(msg *nats.Msg) {
 
 		if err := p.batchProcessor.ProcessRehydrationBatch(ctx, p.rehydrationBatch); err != nil {
 			fmt.Printf("Failed to process rehydration batch: %v\n", err)
+			span.SetTag("error", err)
 			// Messages will be retried via NATS redelivery
+		} else {
+			span.SetTag("messaging.batch_size", len(p.rehydrationBatch.Messages))
 		}
 
 		// Reset batch
