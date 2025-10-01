@@ -20,7 +20,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
 	// Datadog contrib packages for auto-instrumentation
-	_ "github.com/DataDog/dd-trace-go/contrib/gofiber/fiber.v2/v2"
+	fibertracing "github.com/DataDog/dd-trace-go/contrib/gofiber/fiber.v2/v2"
 	_ "github.com/DataDog/dd-trace-go/contrib/jackc/pgx.v5/v2"
 	_ "github.com/DataDog/dd-trace-go/contrib/redis/go-redis.v9/v2"
 )
@@ -124,6 +124,7 @@ func main() {
 
 	// Setup middleware
 	app.Use(recover.New())
+	app.Use(fibertracing.Middleware())
 	app.Use(logger.New(logger.Config{
 		Format:     "[${time}] ${status} - ${latency} ${method} ${path} ${error}\n",
 		TimeFormat: "2006-01-02 15:04:05",
