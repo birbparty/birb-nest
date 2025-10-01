@@ -203,7 +203,7 @@ func (p *Processor) handlePersistenceMessage(msg *nats.Msg) {
 
 	// Process if batch is full
 	if len(p.persistenceBatch.Messages) >= p.config.BatchSize {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(tracer.ContextWithSpan(context.Background(), span), 30*time.Second)
 		defer cancel()
 
 		if err := p.batchProcessor.ProcessPersistenceBatch(ctx, p.persistenceBatch); err != nil {
@@ -268,7 +268,7 @@ func (p *Processor) handleRehydrationMessage(msg *nats.Msg) {
 
 	// Process if batch is full
 	if len(p.rehydrationBatch.Messages) >= p.config.BatchSize {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(tracer.ContextWithSpan(context.Background(), span), 30*time.Second)
 		defer cancel()
 
 		if err := p.batchProcessor.ProcessRehydrationBatch(ctx, p.rehydrationBatch); err != nil {
