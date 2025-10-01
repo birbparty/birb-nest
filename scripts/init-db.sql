@@ -2,14 +2,15 @@
 
 -- Create cache_entries table
 CREATE TABLE IF NOT EXISTS cache_entries (
-    key VARCHAR(255) PRIMARY KEY,
+    key VARCHAR(255) NOT NULL,
     value JSONB NOT NULL,
-    instance_id TEXT DEFAULT '',
+    instance_id TEXT DEFAULT '' NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     version INTEGER DEFAULT 1,
     ttl INTEGER DEFAULT NULL,
-    metadata JSONB DEFAULT '{}'::jsonb
+    metadata JSONB DEFAULT '{}'::jsonb,
+    PRIMARY KEY (instance_id, key)
 );
 
 -- Create indexes for performance
