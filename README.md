@@ -1,38 +1,34 @@
 # 🐦 Birb Nest - Persistent Cache Service
 
-A high-performance, distributed caching service built with Go, featuring automatic persistence to PostgreSQL, Redis caching, and NATS JetStream for reliable message processing.
+A high-performance, distributed caching service built with Go, featuring automatic persistence to PostgreSQL with async writes, Redis caching, and multi-instance support.
 
 ## 🏗️ Architecture Overview
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Client    │────▶│  API Service │────▶│    Redis    │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                           │                     ▲
-                           │                     │
-                      ┌────▼─────┐               │
-                      │   NATS   │               │
-                      │ JetStream│               │
-                      └────┬─────┘               │
-                           │                     │
-                      ┌────▼─────┐               │
-                      │  Worker  │───────────────┘
-                      │ Service  │
-                      └────┬─────┘
-                           │
-                      ┌────▼─────┐
-                      │PostgreSQL│
-                      └──────────┘
+┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
+│   Client    │────▶│   API Service    │────▶│    Redis    │
+└─────────────┘     │  (Primary/       │     └─────────────┘
+                    │   Replica)       │            ▲
+                    └────────┬─────────┘            │
+                             │                      │
+                             │ AsyncWriter          │
+                             │ (Primary only)       │
+                             │                      │
+                        ┌────▼─────┐                │
+                        │PostgreSQL│────────────────┘
+                        │(Source of│    (Read on miss)
+                        │  Truth)  │
+                        └──────────┘
 ```
 
 ### Key Features
 
-- **Double-Write Pattern**: Writes go to both Redis (for fast access) and NATS queue (for persistence)
-- **Read-Through Cache**: Automatic fallback from Redis → PostgreSQL → Rehydration
-- **Custom DLQ**: Reliable message processing with retry logic
-- **Batch Processing**: Efficient database writes through batching
-- **Observability**: Full OpenTelemetry integration with traces, metrics, and logs
-- **Auto-Scaling**: Worker service scales based on queue depth
+- **Async Write Pattern**: Primary writes to Redis immediately, then async writes to PostgreSQL
+- **Read-Through Cache**: Automatic fallback from Redis → PostgreSQL with cache rehydration
+- **Multi-Instance Support**: Isolated cache instances with instance-aware routing
+- **Primary-Replica Mode**: Primary handles persistence, replicas forward writes
+- **Instance Registry**: Dynamic instance management with health tracking
+- **Observability**: Full Datadog APM integration with traces, metrics, and logs
 
 ## 🚀 Quick Start
 
@@ -115,18 +111,16 @@ curl http://localhost:8080/health
 ```
 birb-nest/
 ├── cmd/
-│   ├── api/         # API service entry point
-│   └── worker/      # Worker service entry point
+│   └── api/         # API service entry point
 ├── internal/
-│   ├── api/         # API handlers and routes
+│   ├── api/         # API handlers, routes, and async writer
 │   ├── cache/       # Redis cache implementation
-│   ├── database/    # PostgreSQL layer
-│   ├── queue/       # NATS JetStream implementation
-│   ├── worker/      # Worker processing logic
+│   ├── database/    # PostgreSQL layer with instance support
+│   ├── instance/    # Instance registry and management
 │   └── telemetry/   # Observability setup
+├── sdk/             # Go client SDK
 ├── scripts/         # Helper scripts
-├── tests/           # Test suites
-└── docs/           # Documentation
+└── docs/            # Documentation
 ```
 
 ### Common Commands
@@ -139,16 +133,14 @@ make dev         # Development mode with hot reload
 # View logs
 make logs        # All services
 make logs-api    # API service only
-make logs-worker # Worker service only
 
 # Database access
 make db-shell    # PostgreSQL shell
 make redis-cli   # Redis CLI
 
 # Testing
-make test              # Run unit tests
-make test-integration  # Run integration tests
-make bench            # Run benchmarks
+make test         # Run unit tests
+make bench        # Run benchmarks
 
 # Code quality
 make lint        # Run linters
@@ -162,52 +154,53 @@ Copy `.env.example` to `.env` and configure as needed. Key variables:
 
 - `POSTGRES_*`: PostgreSQL connection settings
 - `REDIS_*`: Redis connection settings
-- `NATS_*`: NATS JetStream settings
-- `API_*`: API service configuration
-- `WORKER_*`: Worker service configuration
+- `API_*`: API service configuration (mode, instance ID, primary URL)
+- `ASYNC_WRITER_*`: Async write queue configuration
+- `DD_*`: Datadog APM configuration
 - `LOG_LEVEL`: Logging verbosity (debug, info, warn, error)
 
-## 🔄 Message Flow
+## 🔄 Data Flow
 
-1. **Write Path**:
-   - Client sends POST to API
-   - API writes to Redis (with TTL)
-   - API publishes to NATS JetStream
-   - Worker consumes from NATS
-   - Worker batches and writes to PostgreSQL
+### Write Path (Primary Mode)
+1. Client sends write request with instance context
+2. API writes to Redis immediately (fast response)
+3. AsyncWriter queues write for PostgreSQL persistence
+4. Background workers batch and persist to PostgreSQL
+5. If replica mode: forward write to primary asynchronously
 
-2. **Read Path**:
-   - Client sends GET to API
-   - API checks Redis (cache hit → return)
-   - If miss, check PostgreSQL
-   - If miss, trigger rehydration via NATS
-   - Return result or 404
+### Read Path
+1. Client sends GET request with instance context
+2. API checks Redis (cache hit → return immediately)
+3. On cache miss, check PostgreSQL by instance ID
+4. If found in PostgreSQL, repopulate Redis cache
+5. Return result or 404
 
-3. **Rehydration**:
-   - Worker processes rehydration messages
-   - Loads data from PostgreSQL
-   - Populates Redis cache
-   - Future reads hit cache
+### Instance Isolation
+- Each instance has isolated cache namespace
+- Writes are scoped to instance ID
+- Registry tracks instance metadata and health
+- Default instance for backward compatibility
 
 ## 📊 Performance Targets
 
-- **Read Latency**: <10ms p99 (cache hit)
-- **Write Latency**: <50ms p99
-- **Throughput**: 10,000+ reads/sec, 5,000+ writes/sec
-- **Batch Size**: 100-1000 messages per batch
-- **Cache Hit Rate**: >90% after warm-up
+- **Read Latency**: <5ms p99 (cache hit), <50ms p99 (cache miss)
+- **Write Latency**: <10ms p99 (Redis), async PostgreSQL persistence
+- **Throughput**: 10,000+ reads/sec, 5,000+ writes/sec per instance
+- **Async Queue**: Configurable queue depth and worker count
+- **Cache Hit Rate**: >95% after warm-up
 
 ## 🚨 Monitoring & Alerts
 
-The service exports metrics in Prometheus format:
+The service exports metrics in Prometheus format and Datadog APM:
 
-- Cache hit/miss rates
-- API request latency histograms
-- Queue depth and processing time
-- Error rates by operation
+- Cache hit/miss rates per instance
+- API request latency histograms with traces
+- Async writer queue depth and processing time
+- Error rates by operation and instance
 - Database connection pool stats
+- Instance registry health metrics
 
-Pre-configured Grafana dashboards are available in `configs/grafana/dashboards/`.
+Metrics endpoint: `GET /metrics`
 
 ## 🤝 Contributing
 
